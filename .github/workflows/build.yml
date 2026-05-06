@@ -7,11 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macOS-latest]
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -27,6 +23,11 @@ jobs:
         shell: bash
         run: ./gradlew build
 
-      - name: Build Docker image
-        if: runner.os == 'Linux'
-        run: docker build -t demo:${{ github.sha }} .
+      - name: Build and Push Docker Image
+        if: github.event_name == 'push'
+        uses: mr-smithers-excellent/docker-build-push@v6
+        with:
+          image: thomasag/springboot-app
+          registry: docker.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
