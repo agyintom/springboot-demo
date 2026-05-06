@@ -15,6 +15,6 @@ public class DemoApplication {
 
     @GetMapping("/")
     public String hello() {
-        return "Hey there! Welcome to my Springboot demo application. built by AJ Tom on 2026-05-06";
+        return "Hey there! Welcome to my Springboot demo application. built by AJ Tom on 2026-05-06 Lets have fun";
     }
 }
