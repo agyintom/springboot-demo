@@ -1,35 +1,53 @@
 name: Build
 
 on:
-  workflow_run:
-    workflows: ["Provision EKS Cluster"]  # exact name must match above
-    types: [completed]
+  push:
     branches: [main]
   pull_request:
 
 jobs:
-  build:
+  provision:
     runs-on: ubuntu-latest
-    # on PR: always run | on push: only if cluster provisioning succeeded
-    if: >
-      github.event_name == 'pull_request' ||
-      github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
 
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Install eksctl
+        run: |
+          curl --silent --location "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_Linux_amd64.tar.gz" | tar xz -C /tmp
+          sudo mv /tmp/eksctl /usr/local/bin
+
+      - name: Create EKS Cluster if not exists
+        run: |
+          if eksctl get cluster --name springboot-cluster --region eu-central-1 2>/dev/null; then
+            echo "Cluster already exists, skipping"
+          else
+            eksctl create cluster -f k8s/cluster.yaml
+          fi
+
+  build:
+    runs-on: ubuntu-latest
+    needs: provision        # ← waits for provision job
+    if: always()            # ← runs even if provision was skipped (PR case)
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - uses: gradle/actions/setup-gradle@v4
-
       - name: Build with Gradle
         shell: bash
         run: ./gradlew build
-
       - name: Build and Push Docker Image
-        if: github.event.workflow_run.conclusion == 'success'
+        if: github.event_name == 'push'
         uses: mr-smithers-excellent/docker-build-push@v6
         with:
           image: thomasag/springboot-app
@@ -41,23 +59,20 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
-
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-
       - name: Update kubeconfig for EKS
         run: |
           aws eks update-kubeconfig \
             --region ${{ secrets.AWS_REGION }} \
             --name ${{ secrets.EKS_CLUSTER_NAME }}
-
       - name: Deploy to EKS
         run: |
           kubectl set image deployment/${{ secrets.K8S_DEPLOYMENT_NAME }} \
