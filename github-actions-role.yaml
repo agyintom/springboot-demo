@@ -9,4 +9,4 @@ rules:
     verbs: ["get", "patch", "list"]
   - apiGroups: ["apps"]
     resources: ["replicasets"]
-    verbs: ["get", "list"]  # needed for rollout status
+    verbs: ["get"]  # needed for rollout status
